@@ -50,13 +50,14 @@ module OAuth
               :access_token_url  => options[:access_token_url],
               :authorize_url     => options[:authorize_url],
               :request_token_url => options[:request_token_url],
-              :scheme            => options[:scheme]
+              :scheme            => options[:scheme],
+              :http_method       => options[:method].to_s.downcase.to_sym
 
             # parameters for OAuth 1.0a
             oauth_verifier = nil
 
             # get a request token
-            request_token = consumer.get_request_token({ :oauth_callback => options[:oauth_callback] }, { :scope => options[:scope] })
+            request_token = consumer.get_request_token({ :oauth_callback => options[:oauth_callback] }, { "scope" => options[:scope] })
 
             if request_token.callback_confirmed?
               stdout.puts "Server appears to support OAuth 1.0a; enabling support."
@@ -100,7 +101,13 @@ module OAuth
 
           access_token = OAuth::AccessToken.new(consumer, options[:oauth_token], options[:oauth_token_secret])
 
-          response = access_token.request(options[:method].downcase.to_sym, options[:uri])
+          # append params to the URL
+          uri = URI.parse(options[:uri])
+          params = prepare_parameters.map { |k,v| v.map { |v2| "#{URI.encode(k)}=#{URI.encode(v2)}" } * "&" }
+          uri.query = [uri.query, *params].reject { |x| x.nil? } * "&"
+          p uri.to_s
+
+          response = access_token.request(options[:method].downcase.to_sym, uri.to_s)
           puts "#{response.code} #{response.message}"
           puts response.body
         when "sign"
@@ -190,11 +197,16 @@ module OAuth
         options[:oauth_signature_method] = "HMAC-SHA1"
         options[:oauth_timestamp] = OAuth::Helper.generate_timestamp
         options[:oauth_version] = "1.0"
+        options[:method] = :post
         options[:params] = []
         options[:scheme] = :header
         options[:version] = "1.0"
 
         ## Common Options
+
+        opts.on("-B", "--body", "Use the request body for OAuth parameters.") do
+          options[:scheme] = :body
+        end
 
         opts.on("--consumer-key KEY", "Specifies the consumer key to use.") do |v|
           options[:oauth_consumer_key] = v
